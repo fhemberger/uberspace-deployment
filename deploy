@@ -1,0 +1,14 @@
+#!/bin/sh
+
+echo "-----> Installing dependencies (npm) ..."
+npm install --production
+
+
+# Log deployment to Piwik ($COMMIT_HASH $COMMIT_MSG)
+echo "-----> Logging deployment to Piwik ..."
+curl -s "http://piwik.frederic-hemberger.de/?module=API&\
+method=Annotations.add&\
+idSite=2&\
+date=`date '+%Y-%m-%d'`&\
+note=`echo Deployment \[$1\] $2 | perl -MURI::Escape -ne 'print uri_escape($_)'`&\
+&token_auth=2e71c7576c7c12dbda53f88cda97a25e"

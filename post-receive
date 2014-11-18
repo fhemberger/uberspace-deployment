@@ -1,0 +1,87 @@
+#!/bin/sh
+
+getBranchName () {
+while read oldrev newrev refname; do echo $(git rev-parse --symbolic --abbrev-ref $refname); done
+}
+
+SERVICE_START_MANUAL=false
+SERVICE_DIR="$HOME/service"
+APPS_DIR="$HOME/apps"
+if [ ! -d "APPS_DIR" ]; then mkdir -p "APPS_DIR"; fi
+
+
+GIT_DIR=`pwd`
+GIT_BRANCH=$(getBranchName)
+GIT_COMMIT_HASH=$(git log -1 --pretty=format:'%h' HEAD)
+GIT_COMMIT_MSG=$(git log -1 --pretty=format:'%s' HEAD)
+echo "-----> Receiving push for branch $GIT_BRANCH"
+
+
+PROJECT=$(basename $GIT_DIR .git)
+if [ $GIT_BRANCH == "master" ]; then
+	SERVICE="$PROJECT@production"
+else
+	SERVICE="$PROJECT@$GIT_BRANCH"
+fi
+
+
+# Halt associated service
+if [ -d "$SERVICE_DIR/$SERVICE/" ]; then
+	echo "-----> Halting service $SERVICE ..."
+	svc -d "$SERVICE_DIR/$SERVICE/"
+else
+	echo "-----> Service $SERVICE not found, setting up dummy service ..."
+	uberspace-setup-service "$SERVICE" node "$SERVICE_DIR/dummy-service.js" 2>&1 | sed "s/^/       /"
+	echo "#!/bin/sh
+
+echo \"-----> Please edit $SERVICE_DIR/$SERVICE/deploy ...\"" > "$SERVICE_DIR/$SERVICE/deploy"
+	chmod +x "$SERVICE_DIR/$SERVICE/deploy"
+	echo "-----> New service $SERVICE initialized"
+	echo "       must be started manually later"
+	echo "-----> Edit $SERVICE_DIR/$SERVICE/deploy"
+	echo "       to define steps to execute on each deployment"
+	SERVICE_START_MANUAL=true
+fi
+
+
+# Update application
+if [ -d "$APPS_DIR/$SERVICE/" ]; then
+	echo "-----> Pulling new release to $APPS_DIR/$SERVICE ..."
+	cd "$APPS_DIR/$SERVICE/"
+	env -i git pull 2>&1 | sed "s/^/       /"
+else
+	echo "-----> Cloning new release to $APPS_DIR/$SERVICE ..."
+	cd "$APPS_DIR/"
+	env -i git clone -b "$GIT_BRANCH" "$GIT_DIR" "$SERVICE" 2>&1 | sed "s/^/       /"
+fi
+
+
+# Execute application specific update script
+# (e.g. install/update dependencies)
+if [ -x "$SERVICE_DIR/$SERVICE/deploy" ]; then
+	echo "-----> Executing deployment script ..."
+	"$SERVICE_DIR/$SERVICE/deploy" $GIT_COMMIT_HASH "$GIT_COMMIT_MSG"
+fi
+
+
+# Take note of the current deployment
+if [ -d "$SERVICE_DIR/$SERVICE/log/main/" ]; then
+echo "-----> Logging deployment to service log ..."
+echo "
+=========================
+DEPLYOMENT:
+Date: `date`
+Revision: $GIT_COMMIT_HASH
+$GIT_COMMIT_MSG
+=========================
+" >> "$SERVICE_DIR/$SERVICE/log/main/current"
+fi
+
+
+# Start service again
+if [ "$SERVICE_START_MANUAL" = true ]; then
+	echo "-----> Deployment successful. Please edit configuration for $SERVICE and start it manually."
+else
+	echo "-----> Deployment successful. Restarting $SERVICE ..."
+	svc -u "$SERVICE_DIR/$SERVICE/"
+fi
