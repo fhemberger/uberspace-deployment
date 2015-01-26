@@ -7,7 +7,7 @@ while read oldrev newrev refname; do echo $(git rev-parse --symbolic --abbrev-re
 SERVICE_START_MANUAL=false
 SERVICE_DIR="$HOME/service"
 APPS_DIR="$HOME/apps"
-if [ ! -d "APPS_DIR" ]; then mkdir -p "APPS_DIR"; fi
+if [ ! -d "APPS_DIR" ]; then mkdir -p "$APPS_DIR"; fi
 
 
 GIT_DIR=`pwd`
